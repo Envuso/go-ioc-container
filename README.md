@@ -1,6 +1,10 @@
 # IoC Container
 Elegant Go IoC based on Laravels container
 
+<div>
+<a href="https://pkg.go.dev/github.com/Envuso/go-ioc-container"><img src="https://pkg.go.dev/badge/github.com/Envuso/go-ioc-container.svg" alt="Go Reference"></a>
+</div>
+
 ### Installation/Setup
 
 ```shell
