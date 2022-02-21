@@ -1,4 +1,4 @@
-package Container
+package container
 
 import (
 	"log"
@@ -78,7 +78,7 @@ func (invocable *Invocable) instantiateStruct() {
 	invocable.isInstantiated = true
 }
 
-func (invocable *Invocable) instantiateStructAndFill(container *IocContainer) reflect.Value {
+func (invocable *Invocable) instantiateStructAndFill(container *ContainerInstance) reflect.Value {
 	if !invocable.isInstantiated {
 		invocable.instantiate()
 	}
@@ -87,14 +87,14 @@ func (invocable *Invocable) instantiateStructAndFill(container *IocContainer) re
 }
 
 // InstantiateWith - Instantiate a struct and fill its fields with values from the container
-func (invocable *Invocable) InstantiateWith(container *IocContainer) any {
+func (invocable *Invocable) InstantiateWith(container *ContainerInstance) any {
 	resolvedStruct := invocable.instantiateStructAndFill(container)
 
 	return resolvedStruct.Interface()
 }
 
 // CallMethodByNameWith - Call the method and assign its parameters from the passed parameters & container
-func (invocable *Invocable) CallMethodByNameWith(methodName string, container *IocContainer, parameters ...any) []reflect.Value {
+func (invocable *Invocable) CallMethodByNameWith(methodName string, container *ContainerInstance, parameters ...any) []reflect.Value {
 	if invocable.typeOfBinding != "struct" {
 		panic("CallMethodByNameWith is only usable when the Invocable instance is created with a struct.")
 	}
@@ -111,7 +111,7 @@ func (invocable *Invocable) CallMethodByNameWith(methodName string, container *I
 }
 
 // CallMethodWith - Call the method and assign its parameters from the passed parameters & container
-func (invocable *Invocable) CallMethodWith(container *IocContainer, parameters ...any) []reflect.Value {
+func (invocable *Invocable) CallMethodWith(container *ContainerInstance, parameters ...any) []reflect.Value {
 	if !invocable.isInstantiated {
 		invocable.instantiate()
 	}

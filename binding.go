@@ -1,8 +1,8 @@
-package Container
+package container
 
 import "reflect"
 
-type IocContainerBinding struct {
+type Binding struct {
 	// Function, Concrete, Abstract
 	// Function is a function we call to get a resolved value
 	// Concrete is resolvable by passing a type of the concrete
