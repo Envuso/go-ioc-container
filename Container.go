@@ -1,108 +1,20 @@
 package Container
 
 import (
+	"errors"
 	"log"
 	"reflect"
 	"unsafe"
 
-	"golang.org/x/exp/maps"
+	"github.com/modern-go/reflect2"
 	"golang.org/x/exp/slices"
 )
 
-type IocContainer struct {
-	// Store our singleton instances
-	// instances map[reflect.Type]*IocContainerBinding
-
-	// Our resolved singleton instances
-	resolved map[reflect.Type]any
-
-	// Store our abstract -> concrete bindings
-	// If a type doesn't have an abstract type
-	// We'll store concrete -> concrete
-	bindings map[reflect.Type]*IocContainerBinding
-
-	// Store aliases of Concrete -> Abstract, so we can resolve from concrete
-	// when we only bound Abstract -> Concrete
-	concretes map[reflect.Type]reflect.Type
-
-	// When we register a tagged type, we'll store the tag string and then an array
-	// of types for this tag, we can then use these types to resolve the bindings
-	tagged map[string][]reflect.Type
-
-	// If our container is a child container, we'll have a pointer to our parent
-	parent *IocContainer
-}
-
-// CreateContainer - Create a new container instance
-func CreateContainer() *IocContainer {
-	c := &IocContainer{
-		resolved:  make(map[reflect.Type]any),
-		bindings:  make(map[reflect.Type]*IocContainerBinding),
-		concretes: make(map[reflect.Type]reflect.Type),
-		tagged:    make(map[string][]reflect.Type),
-	}
-
-	containerInstances = append(containerInstances, c.pointer())
-
-	return c
-}
-
-var Container = CreateContainer()
-var containerInstances = []unsafe.Pointer{}
-
-func removeAllChildContainerInstances() {
-	// mainContainerPointer := Container.pointer()
-	//
-	// newContainerInstances := []unsafe.Pointer{}
-	//
-	// for _, containerPtr := range containerInstances {
-	// 	var container = *((*IocContainer)(containerPtr))
-	//
-	// 	if container.parent == nil && container.pointer() != mainContainerPointer {
-	//
-	// 	}
-	// }
-}
-
-// CreateChildContainer - Returns a new container, any failed look-ups of our
-// child container, will then be looked up in the parent, or returned nil
-func (container *IocContainer) CreateChildContainer() *IocContainer {
-	c := &IocContainer{
-		resolved:  make(map[reflect.Type]any),
-		bindings:  make(map[reflect.Type]*IocContainerBinding),
-		concretes: make(map[reflect.Type]reflect.Type),
-		tagged:    make(map[string][]reflect.Type),
-	}
-
-	c.parent = container
-
-	containerInstances = append(containerInstances, c.pointer())
-
-	return c
-}
-
-func (container *IocContainer) pointer() unsafe.Pointer {
-	return reflect.ValueOf(container).UnsafePointer()
-}
-
-// ClearInstances - This will just remove any singleton instances from the container
-// When they are next resolved via Make/MakeTo, they will be instantiated again
-func (container *IocContainer) ClearInstances() {
-	maps.Clear(container.resolved)
-}
-
-// Reset - Reset will empty all bindings in this container, you will have to register
-// any bindings again before you can resolve them.
-func (container *IocContainer) Reset() {
-	maps.Clear(container.resolved)
-	maps.Clear(container.bindings)
-	maps.Clear(container.concretes)
-}
-
-// ParentContainer - Returns the parent container, if one exists
-func (container *IocContainer) ParentContainer() *IocContainer {
-	return container.parent
-}
+// --------------------
+//
+// Binding Registration
+//
+// --------------------
 
 // Bind - Add a binding to the container, we can do this in a few different ways...
 //
@@ -175,6 +87,7 @@ func (container *IocContainer) Bind(bindingDef ...any) bool {
 		abstractType:     abstractType,
 		concreteType:     concreteType,
 		resolverFunction: bindingDef[1],
+		invocable:        CreateInvocable(concreteType),
 	})
 
 	return true
@@ -202,6 +115,8 @@ func (container *IocContainer) Singleton(singleton any, concreteResolverFunc ...
 
 			abstractType: singletonType,
 			concreteType: singletonType,
+
+			invocable: CreateInvocableFunction(singleton),
 		})
 
 		return true
@@ -224,6 +139,7 @@ func (container *IocContainer) Singleton(singleton any, concreteResolverFunc ...
 
 			abstractType: singletonConcrete,
 			concreteType: singletonConcrete,
+			invocable:    CreateInvocable(singletonConcrete),
 		})
 		return true
 	}
@@ -248,6 +164,7 @@ func (container *IocContainer) Singleton(singleton any, concreteResolverFunc ...
 
 		abstractType: singletonConcrete,
 		concreteType: singletonConcrete,
+		invocable:    CreateInvocableFunction(resolverFunc),
 	})
 
 	return true
@@ -273,6 +190,7 @@ func (container *IocContainer) Instance(instance any) bool {
 
 		abstractType: singletonConcrete,
 		concreteType: singletonConcrete,
+		invocable:    CreateInvocable(singletonConcrete),
 	})
 
 	// Our instance is already instantiated, we'll pass it straight to resolved
@@ -280,6 +198,195 @@ func (container *IocContainer) Instance(instance any) bool {
 
 	return true
 }
+
+// IsBound - Check if the provided value type exists in our container
+func (container *IocContainer) IsBound(binding any) bool {
+	return container.getBindingType(binding) != nil
+}
+
+// Make - Try to make a new instance of the provided value and return it
+// This requires a type cast to work nicely...
+// For example:
+//  service := IocContainer.Make((*ServiceAbstract)(nil))
+func (container *IocContainer) Make(abstract any, parameters ...any) any {
+	binding := container.getBindingType(abstract)
+
+	if binding == nil {
+		log.Printf("Failed to resolve binding for abstract type %s", reflect.TypeOf(abstract).String())
+		return nil
+	}
+
+	return container.makeFromBinding(binding, parameters...)
+}
+
+// MakeTo - Try to make a new instance of the provided value and assign it to your arg
+// For example:
+//  var service ServiceAbstract
+//  IocContainer.MakeTo(&service)
+func (container *IocContainer) MakeTo(makeTo any, parameters ...any) {
+	makeToVal := reflect.ValueOf(makeTo)
+
+	if makeToVal.Kind() != reflect.Pointer {
+		log.Printf("Call to IocContainer.MakeTo(), the makeTo arg must be a pointer to your receiving var. Ex; var service ServiceAbstract; IocContainer.MakeTo(&service)...")
+		return
+	}
+
+	makeToElem := makeToVal.Elem()
+	makeToType := makeToElem.Type()
+	if !makeToElem.CanSet() {
+		log.Printf("Call to IocContainer.MakeTo(), the makeTo arg cannot be set?")
+		return
+	}
+
+	resolved := container.Make(makeToType, parameters...)
+	if resolved == nil {
+		return
+	}
+
+	resolvedValue := reflect.ValueOf(resolved)
+
+	if makeToVal.Kind() == reflect.Ptr && resolvedValue.Kind() != reflect.Ptr {
+		reflect2.TypeOf(makeTo).UnsafeSet(
+			makeToVal.UnsafePointer(),
+			reflect2.PtrOf(resolved),
+		)
+		return
+	}
+
+	// ptr := reflect.NewAt(makeToValIndirect.Type(), unsafe.Pointer(makeToValIndirect.UnsafeAddr())).Elem()
+	// ptr.Set(resolvedValue.Addr())
+
+	makeToElem.Set(resolvedValue)
+}
+
+// --------------
+//
+// Invocation
+//
+// --------------
+
+// func (container *IocContainer) binding(abstract any) *IocContainerBinding {
+// 	binding := container.getBindingType(abstract)
+//
+// 	if binding == nil {
+// 		log.Printf("Failed to resolve binding for abstract type %s", reflect.TypeOf(abstract).String())
+// 		return nil
+// 	}
+//
+// 	containerBinding, ok := container.bindings[binding]
+//
+// 	if ok {
+// 		return containerBinding
+// 	}
+//
+// 	if container.parent != nil {
+// 		return container.parent.Binding(abstract)
+// 	}
+//
+// 	log.Printf("Failed to resolve container binding for abstract type %s", binding.String())
+// 	return nil
+// }
+
+// Call - Call the specified function via the container, you can add parameters to your function,
+// and they will be resolved from the container, if they're registered
+func (container *IocContainer) Call(function any, parameters ...any) []any {
+	invocable := CreateInvocableFunction(function)
+
+	instanceReturnValues := invocable.CallMethodWith(container, parameters...)
+
+	returnResult := make([]any, len(instanceReturnValues))
+	for i, value := range instanceReturnValues {
+		returnResult[i] = value.Interface()
+	}
+
+	return returnResult
+}
+
+// --------------
+//
+// Tagged Bindings
+//
+// --------------
+
+// Tag - When we've bound to the container, we can then tag the abstracts with a string
+// This is useful when we want to obtain a "category" of implementations
+//
+// For example; Imagine we have a few different "statistic gathering" services
+//
+//  // Bind our individual services
+//  Container.Bind(new(NewUserPostViewsStatService), func () {})
+//  Container.Bind(new(NewPageViewsStatService), func () {})
+//
+//  // Add the services to the "StatServices" "Category"
+//  Container.Tag("StatServices", new(NewUserPostViewsStatService), new(NewPageViewsStatService))
+//
+//  // Now we can obtain them all
+//  Container.Tagged("StatServices")
+//
+func (container *IocContainer) Tag(tag string, bindings ...any) bool {
+	if len(bindings) == 0 {
+		return false
+	}
+
+	taggedTypes := []reflect.Type{}
+
+	// Get the types of the provided bindings and create a new array
+	for _, b := range bindings {
+		binding := container.getBindingType(b)
+		if binding == nil {
+			continue
+		}
+		taggedTypes = append(taggedTypes, binding)
+	}
+
+	// If we couldn't get binding types and our array is empty... return
+	if len(taggedTypes) == 0 {
+		return false
+	}
+
+	// If we don't have any tagged types already with this tag, we'll just set and return
+	if _, ok := container.tagged[tag]; !ok {
+		container.tagged[tag] = taggedTypes
+		return true
+	}
+
+	// We have types tagged with this tag already, so we need to merge, but make sure they're unique
+	for _, taggedType := range taggedTypes {
+		if !slices.Contains(container.tagged[tag], taggedType) {
+			container.tagged[tag] = append(container.tagged[tag], taggedType)
+		}
+	}
+
+	return len(container.tagged[tag]) > 0
+}
+
+// Tagged - Resolve the instances from the container using the specified tag
+// Refer to Tag to see how adding tagged bindings works
+func (container *IocContainer) Tagged(tag string) []any {
+	resolved := []any{}
+
+	if _, ok := container.tagged[tag]; !ok {
+		return resolved
+	}
+
+	taggedTypes := container.tagged[tag]
+
+	for _, taggedType := range taggedTypes {
+		resolvedBinding := container.makeFromBinding(taggedType)
+		if resolvedBinding == nil {
+			continue
+		}
+		resolved = append(resolved, resolvedBinding)
+	}
+
+	return resolved
+}
+
+// --------------
+//
+// Binding Creators
+//
+// --------------
 
 // addFunctionBinding - Create a new container binding from the function
 // This resolves the return type of the function as the Abstract
@@ -298,6 +405,8 @@ func (container *IocContainer) addFunctionBinding(definition reflect.Type, resol
 	// 	log.Printf("Function binding has args... if these args cannot be found in the container when resolving, your code will error.")
 	// }
 
+	resolverType := reflect.TypeOf(resolver)
+
 	container.addBinding(indirectType(definition.Out(0)), &IocContainerBinding{
 		bindingType: "Function",
 
@@ -305,7 +414,9 @@ func (container *IocContainer) addFunctionBinding(definition reflect.Type, resol
 		isFunctionResolver: true,
 
 		abstractType: definition,
-		concreteType: reflect.TypeOf(resolver),
+		concreteType: resolverType,
+
+		invocable: CreateInvocableFunction(resolver),
 	})
 }
 
@@ -333,7 +444,91 @@ func (container *IocContainer) addConcreteBinding(definition reflect.Type, concr
 
 		abstractType: concreteType,
 		concreteType: definition,
+
+		invocable: CreateInvocable(concreteType),
 	})
+}
+
+// addBinding - Convenience function to add a IocContainerBinding for the type &
+// create a reverse lookup for Concrete -> Abstract
+func (container *IocContainer) addBinding(abstractType reflect.Type, binding *IocContainerBinding) {
+	container.bindings[abstractType] = binding
+	container.concretes[binding.concreteType] = abstractType
+}
+
+func (container *IocContainer) addSingletonBinding(singletonType reflect.Type, binding *IocContainerBinding) {
+	binding.isSingleton = true
+	container.addBinding(singletonType, binding)
+}
+
+// --------------
+//
+// Resolvers
+//
+// --------------
+
+// resolve - This works in a couple of different ways:
+//
+// Singletons:
+// - If type exists in container.resolved
+//   - Return the value
+// - If it doesn't and:
+//   - It has been bound by a function, we'll call the function
+//   - It has been bound by a type, we'll instantiate the type
+// - We'll then add the result of the above into container.resolved
+//
+// Function bindings:
+// - Call the function and inject the args, return it
+//
+// Type bindings:
+// - Instantiate the type, return it
+func (container *IocContainer) resolve(binding *IocContainerBinding, parameters ...any) any {
+	if binding.isSingleton {
+		return container.resolveSingleton(binding, parameters...)
+	}
+
+	if binding.isFunctionResolver {
+		return container.resolveFromFunctionResolver(binding, parameters...)
+	}
+
+	return binding.invocable.InstantiateWith(container)
+}
+
+// resolveStructFields - Attempt to resolve all the fields from the container, for the specified struct
+func (container *IocContainer) resolveStructFields(instanceType reflect.Type, instance reflect.Value) reflect.Value {
+	if instanceType == nil {
+		panic(errors.New("container: invalid structure"))
+	}
+
+	structType := indirectType(instanceType)
+	if structType.Kind() != reflect.Struct {
+		panic(errors.New("container: invalid structure"))
+	}
+
+	structValue := instance
+	if instance.Kind() == reflect.Ptr {
+		structValue = instance.Elem()
+	}
+
+	for i := 0; i < structValue.NumField(); i++ {
+		field := structValue.Field(i)
+		fieldType := structType.Field(i)
+
+		if container.Config.OnlyInjectStructFieldsWithInjectTag {
+			if tag, ok := fieldType.Tag.Lookup("inject"); ok {
+				print("Inject tag is : " + tag)
+			}
+			continue
+		}
+
+		resolved := container.makeFromBinding(field.Type())
+		if resolved != nil {
+			ptr := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem()
+			ptr.Set(reflect.ValueOf(resolved))
+		}
+	}
+
+	return instance
 }
 
 // resolveFunctionArgs - Resolves the args of our function we bound to the container
@@ -342,8 +537,18 @@ func (container *IocContainer) addConcreteBinding(definition reflect.Type, concr
 // Then we'll look at the function args, and if we assigned a value from the parameters already
 // it will use that, otherwise we'll look the type up in the container and resolve it
 func (container *IocContainer) resolveFunctionArgs(function reflect.Value, parameters ...any) []reflect.Value {
+	inArgCount := 0
+
+	if !function.IsValid() || function.IsZero() {
+		return []reflect.Value{}
+	}
+
 	functionType := function.Type()
-	inArgCount := functionType.NumIn()
+	if functionType.Kind() == reflect.Ptr {
+		inArgCount = functionType.Elem().NumIn()
+	} else {
+		inArgCount = functionType.NumIn()
+	}
 
 	// We'll put the types of all in args into this array,
 	// so we don't have to keep running .In()
@@ -428,11 +633,8 @@ func (container *IocContainer) resolveFunctionArg(arg reflect.Type) (reflect.Val
 // from parameters & the container. If our bound function returns an error for the second
 // return value, and there is an error, our code will panic.
 func (container *IocContainer) resolveFromFunctionResolver(binding *IocContainerBinding, parameters ...any) any {
-	function := reflect.ValueOf(binding.resolverFunction)
 
-	instanceReturnValues := function.Call(
-		container.resolveFunctionArgs(function, parameters...),
-	)
+	instanceReturnValues := binding.invocable.CallMethodWith(container, parameters...)
 
 	// If we have two return values... it's possible arg 1 is our implementation, arg 2 is an error?
 	// If this is the case, we'll panic, idk what to do here.
@@ -464,7 +666,7 @@ func (container *IocContainer) resolveSingleton(binding *IocContainerBinding, pa
 			return nil
 		}
 	} else {
-		resolvedInstance = container.resolveFromType(binding)
+		resolvedInstance = binding.invocable.InstantiateWith(container)
 		if resolvedInstance == nil {
 			return nil
 		}
@@ -475,12 +677,11 @@ func (container *IocContainer) resolveSingleton(binding *IocContainerBinding, pa
 	return resolvedInstance
 }
 
-// resolveFromType - Create a new instance of the concreteType and return it
-func (container *IocContainer) resolveFromType(binding *IocContainerBinding) any {
-	instance := reflect.New(binding.concreteType)
-
-	return instance.Interface()
-}
+// --------------
+//
+// Helpers
+//
+// --------------
 
 // hasBinding - Look up a Type in the container and return whether it exists
 func (container *IocContainer) hasBinding(binding reflect.Type) bool {
@@ -525,49 +726,6 @@ func (container *IocContainer) getBindingType(binding any) reflect.Type {
 	return nil
 }
 
-// IsBound - Check if the provided value type exists in our container
-func (container *IocContainer) IsBound(binding any) bool {
-	return container.getBindingType(binding) != nil
-}
-
-// addBinding - Convenience function to add a IocContainerBinding for the type &
-// create a reverse lookup for Concrete -> Abstract
-func (container *IocContainer) addBinding(abstractType reflect.Type, binding *IocContainerBinding) {
-	container.bindings[abstractType] = binding
-	container.concretes[binding.concreteType] = abstractType
-}
-func (container *IocContainer) addSingletonBinding(singletonType reflect.Type, binding *IocContainerBinding) {
-	binding.isSingleton = true
-	container.addBinding(singletonType, binding)
-}
-
-// resolve - This works in a couple of different ways:
-//
-// Singletons:
-// - If type exists in container.resolved
-//   - Return the value
-// - If it doesn't and:
-//   - It has been bound by a function, we'll call the function
-//   - It has been bound by a type, we'll instantiate the type
-// - We'll then add the result of the above into container.resolved
-//
-// Function bindings:
-// - Call the function and inject the args, return it
-//
-// Type bindings:
-// - Instantiate the type, return it
-func (container *IocContainer) resolve(binding *IocContainerBinding, parameters ...any) any {
-	if binding.isSingleton {
-		return container.resolveSingleton(binding, parameters...)
-	}
-
-	if binding.isFunctionResolver {
-		return container.resolveFromFunctionResolver(binding, parameters...)
-	}
-
-	return container.resolveFromType(binding)
-}
-
 // makeFromBinding - Once we've obtained our binding type from
 // Make, we'll then check the containers bindings
 // If it doesn't exist, and we have a parent container we'll then call makeFromBinding on the
@@ -585,118 +743,20 @@ func (container *IocContainer) makeFromBinding(binding reflect.Type, parameters 
 	return container.resolve(containerBinding, parameters...)
 }
 
-// Make - Try to make a new instance of the provided value and return it
-// This requires a type cast to work nicely...
-// For example:
-//  service := IocContainer.Make((*ServiceAbstract)(nil))
-func (container *IocContainer) Make(abstract any, parameters ...any) any {
-	binding := container.getBindingType(abstract)
-
-	if binding == nil {
-		log.Printf("Failed to resolve binding for abstract type %s", reflect.TypeOf(abstract).String())
-		return nil
-	}
-
-	return container.makeFromBinding(binding, parameters...)
+func (container *IocContainer) pointer() unsafe.Pointer {
+	return reflect.ValueOf(container).UnsafePointer()
 }
 
-// MakeTo - Try to make a new instance of the provided value and assign it to your arg
-// For example:
-//  var service ServiceAbstract
-//  IocContainer.MakeTo(&service)
-func (container *IocContainer) MakeTo(makeTo any, parameters ...any) {
-	makeToVal := reflect.ValueOf(makeTo)
-	if makeToVal.Kind() != reflect.Pointer {
-		log.Printf("Call to IocContainer.MakeTo(), the makeTo arg must be a pointer to your receiving var. Ex; var service ServiceAbstract; IocContainer.MakeTo(&service)...")
-		return
-	}
-
-	makeToValIndirect := reflect.Indirect(makeToVal)
-	if !makeToValIndirect.CanSet() {
-		log.Printf("Call to IocContainer.MakeTo(), the makeTo arg cannot be set?")
-		return
-	}
-
-	bindingType := reflect.Indirect(makeToVal).Type()
-
-	resolved := container.Make(bindingType, parameters...)
-	if resolved == nil {
-		return
-	}
-
-	makeToValIndirect.Set(reflect.ValueOf(resolved))
-}
-
-// Tag - When we've bound to the container, we can then tag the abstracts with a string
-// This is useful when we want to obtain a "category" of implementations
-//
-// For example; Imagine we have a few different "statistic gathering" services
-//
-//  // Bind our individual services
-//  Container.Bind(new(NewUserPostViewsStatService), func () {})
-//  Container.Bind(new(NewPageViewsStatService), func () {})
-//
-//  // Add the services to the "StatServices" "Category"
-//  Container.Tag("StatServices", new(NewUserPostViewsStatService), new(NewPageViewsStatService))
-//
-//  // Now we can obtain them all
-//  Container.Tagged("StatServices")
-//
-func (container *IocContainer) Tag(tag string, bindings ...any) bool {
-	if len(bindings) == 0 {
-		return false
-	}
-
-	taggedTypes := []reflect.Type{}
-
-	// Get the types of the provided bindings and create a new array
-	for _, b := range bindings {
-		binding := container.getBindingType(b)
-		if binding == nil {
-			continue
-		}
-		taggedTypes = append(taggedTypes, binding)
-	}
-
-	// If we couldn't get binding types and our array is empty... return
-	if len(taggedTypes) == 0 {
-		return false
-	}
-
-	// If we don't have any tagged types already with this tag, we'll just set and return
-	if _, ok := container.tagged[tag]; !ok {
-		container.tagged[tag] = taggedTypes
-		return true
-	}
-
-	// We have types tagged with this tag already, so we need to merge, but make sure they're unique
-	for _, taggedType := range taggedTypes {
-		if !slices.Contains(container.tagged[tag], taggedType) {
-			container.tagged[tag] = append(container.tagged[tag], taggedType)
-		}
-	}
-
-	return len(container.tagged[tag]) > 0
-}
-
-// Tagged - Resolve the instances from the container using the specified tag
-// Refer to Tag to see how adding tagged bindings works
-func (container *IocContainer) Tagged(tag string) []any {
-	resolved := []any{}
-
-	if _, ok := container.tagged[tag]; !ok {
-		return resolved
-	}
-
-	taggedTypes := container.tagged[tag]
-
-	for _, taggedType := range taggedTypes {
-		resolvedBinding := container.makeFromBinding(taggedType)
-		if resolvedBinding == nil {
-			continue
-		}
-		resolved = append(resolved, resolvedBinding)
-	}
-
-	return resolved
+func removeAllChildContainerInstances() {
+	// mainContainerPointer := Container.pointer()
+	//
+	// newContainerInstances := []unsafe.Pointer{}
+	//
+	// for _, containerPtr := range containerInstances {
+	// 	var container = *((*IocContainer)(containerPtr))
+	//
+	// 	if container.parent == nil && container.pointer() != mainContainerPointer {
+	//
+	// 	}
+	// }
 }

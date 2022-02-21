@@ -5,6 +5,24 @@ import (
 	"reflect"
 )
 
+func isInvocable(typ reflect.Type) (bool, string) {
+	kind := typ.Kind()
+
+	if kind == reflect.Ptr {
+		typ = indirectType(typ)
+	}
+
+	if kind == reflect.Struct {
+		return true, "struct"
+	}
+
+	if kind == reflect.Func {
+		return true, "func"
+	}
+
+	return false, ""
+}
+
 func indirectType(typ reflect.Type) reflect.Type {
 	switch typ.Kind() {
 	case reflect.Ptr, reflect.Array, reflect.Chan, reflect.Map, reflect.Slice:

@@ -1,6 +1,8 @@
 package Container
 
-import "testing"
+import (
+	"testing"
+)
 
 type ServiceAbstract interface {
 	Message() string
@@ -141,11 +143,11 @@ func TestBindingAbstractToConcreteViaFunctionWithAbstractToFunctionArgs(t *testi
 
 func TestResolvingWithTypeCast(t *testing.T) {
 	container := CreateContainer()
-	if !container.Bind((*ServiceAbstract)(nil), ServiceConcrete{}) {
+	if !container.Bind(new(ServiceAbstract), &ServiceConcrete{}) {
 		t.Fatal("Could not bind ServiceAbstract to ServiceConcrete")
 	}
 
-	serviceResolved := container.Make((*ServiceAbstract)(nil))
+	serviceResolved := container.Make(new(ServiceAbstract))
 
 	if serviceResolved == nil {
 		t.Fatal("Could not resolve ServiceConcrete via ServiceAbstract")
@@ -456,4 +458,60 @@ func TestAddingTaggedBindings(t *testing.T) {
 	if _, ok := tagged[1].(*ServiceConcreteTwo); !ok {
 		t.Fatal("First tagged service is not ServiceConcreteTwo")
 	}
+}
+
+//
+// INVOCABLE
+//
+
+func TestCallingFunctionUsingDI(t *testing.T) {
+	container := CreateContainer()
+	container.Bind(createSingletonServiceOne)
+
+	container.Call(func(concrete *ServiceConcrete) {
+		if concrete == nil {
+			t.Fatal("Concrete wasnt resolved in function call")
+		}
+	})
+}
+
+func TestCallingFunctionOnStructUsingDI(t *testing.T) {
+	// container := CreateContainer()
+	// container.Bind(createSingletonServiceOne)
+	//
+	// invocable := CreateInvocable(reflect.TypeOf(ServiceConcrete{}))
+	// result := invocable.CallMethodByNameWith("Message", container)
+	//
+	// message := result[0].Interface().(string)
+	// print(message)
+
+}
+
+func TestCreatingStructUsingDI(t *testing.T) {
+	type TestStruct struct {
+		Resolved AnotherServiceAbstract
+	}
+	container := CreateContainer()
+
+	container.Bind(newAnotherService)
+	if !container.IsBound(new(AnotherServiceAbstract)) {
+		t.Fatal("Could not find AnotherServiceAbstract binding in container")
+	}
+
+	container.Bind(new(TestStruct))
+	if !container.IsBound(new(TestStruct)) {
+		t.Fatal("Could not find TestStruct binding in container")
+	}
+
+	var service *TestStruct
+	container.MakeTo(&service)
+
+	// if service == nil -
+	// 	t.Fatal("Could not resolve TestStruct from container using MakeTo")
+	// }
+
+	if service.Resolved == nil {
+		t.Fatal("Struct was not initialized with service injection of AnotherServiceAbstract")
+	}
+
 }

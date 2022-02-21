@@ -25,4 +25,6 @@ type IocContainerBinding struct {
 	abstractType reflect.Type
 	// This is our actually resolvable concrete type
 	concreteType reflect.Type
+
+	invocable *Invocable
 }
