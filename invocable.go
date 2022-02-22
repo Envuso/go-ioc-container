@@ -123,9 +123,7 @@ func (invocable *Invocable) CallMethodByNameWith(methodName string, container *C
 	structInstance := invocable.InstantiateStructAndFill(container)
 	method := structInstance.MethodByName(methodName)
 
-	return method.Call(
-		container.resolveFunctionArgs(invocable.instance, parameters...),
-	)
+	return method.Call(container.resolveFunctionArgs(method, parameters...))
 }
 
 // CallMethodWith - Call the method and assign its parameters from the passed parameters & container
