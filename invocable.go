@@ -25,12 +25,30 @@ func CreateInvocableFunction(function any) *Invocable {
 
 	isInvoc, invocableType := isInvocable(bindingType)
 	if !isInvoc {
-		log.Printf("type passed to CreateInvocable is not an invocable type(function or struct)")
+		log.Printf("type passed to CreateInvocableFunction is not an invocable type(function or struct)")
 		return nil
 	}
 
 	return &Invocable{
 		instance:       getVal(function),
+		bindingType:    bindingType,
+		typeOfBinding:  invocableType,
+		isInstantiated: true,
+	}
+}
+
+// CreateInvocableStruct - Pass a struct reference through - skips the need to get/resolve the type etc
+func CreateInvocableStruct(structRef any) *Invocable {
+	bindingType := getType(structRef)
+
+	isInvoc, invocableType := isInvocable(bindingType)
+	if !isInvoc {
+		log.Printf("type passed to CreateInvocableStruct (%s) is not an invocable type(function or struct)", bindingType.String())
+		return nil
+	}
+
+	return &Invocable{
+		instance:       getVal(structRef),
 		bindingType:    bindingType,
 		typeOfBinding:  invocableType,
 		isInstantiated: true,
@@ -78,7 +96,7 @@ func (invocable *Invocable) instantiateStruct() {
 	invocable.isInstantiated = true
 }
 
-func (invocable *Invocable) instantiateStructAndFill(container *ContainerInstance) reflect.Value {
+func (invocable *Invocable) InstantiateStructAndFill(container *ContainerInstance) reflect.Value {
 	if !invocable.isInstantiated {
 		invocable.instantiate()
 	}
@@ -88,7 +106,7 @@ func (invocable *Invocable) instantiateStructAndFill(container *ContainerInstanc
 
 // InstantiateWith - Instantiate a struct and fill its fields with values from the container
 func (invocable *Invocable) InstantiateWith(container *ContainerInstance) any {
-	resolvedStruct := invocable.instantiateStructAndFill(container)
+	resolvedStruct := invocable.InstantiateStructAndFill(container)
 
 	return resolvedStruct.Interface()
 }
@@ -102,7 +120,7 @@ func (invocable *Invocable) CallMethodByNameWith(methodName string, container *C
 		invocable.instantiate()
 	}
 
-	structInstance := invocable.instantiateStructAndFill(container)
+	structInstance := invocable.InstantiateStructAndFill(container)
 	method := structInstance.MethodByName(methodName)
 
 	return method.Call(

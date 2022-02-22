@@ -10,6 +10,7 @@ func isInvocable(typ reflect.Type) (bool, string) {
 
 	if kind == reflect.Ptr {
 		typ = indirectType(typ)
+		kind = typ.Kind()
 	}
 
 	if kind == reflect.Struct {
@@ -36,6 +37,9 @@ func indirectType(typ reflect.Type) reflect.Type {
 func getType(t any) reflect.Type {
 	if _, ok := t.(reflect.Type); ok {
 		return t.(reflect.Type)
+	}
+	if _, ok := t.(reflect.Value); ok {
+		return t.(reflect.Value).Type()
 	}
 	return reflect.TypeOf(t)
 }

@@ -1,9 +1,11 @@
 package tests
 
 import (
+	"reflect"
 	"testing"
 
 	Container "github.com/Envuso/go-ioc-container"
+	"github.com/stretchr/testify/assert"
 )
 
 //
@@ -22,14 +24,13 @@ func TestCallingFunctionUsingDI(t *testing.T) {
 }
 
 func TestCallingFunctionOnStructUsingDI(t *testing.T) {
-	// container := Container.CreateContainer()
-	// container.Bind(createSingletonServiceOne)
-	//
-	// invocable := CreateInvocable(reflect.TypeOf(serviceConcrete{}))
-	// result := invocable.CallMethodByNameWith("Message", container)
-	//
-	// message := result[0].Interface().(string)
-	// print(message)
+	container := Container.CreateContainer()
+	container.Bind(createSingletonServiceOne)
+
+	invocable := Container.CreateInvocableStruct(reflect.ValueOf(&serviceConcrete{}))
+
+	result := invocable.InstantiateWith(container)
+	assert.NotNil(t, result)
 
 }
 
