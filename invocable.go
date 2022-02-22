@@ -9,7 +9,7 @@ import (
 func CreateInvocable(bindingType reflect.Type) *Invocable {
 	isInvoc, invocableType := isInvocable(bindingType)
 	if !isInvoc {
-		log.Printf("type passed to CreateInvocable is not an invocable type(function or struct)")
+		log.Printf("type passed to CreateInvocable (%s) is not an invocable type(function or struct)", bindingType.String())
 		return nil
 	}
 
@@ -21,7 +21,7 @@ func CreateInvocable(bindingType reflect.Type) *Invocable {
 
 // CreateInvocableFunction - Pass a function reference through - skips the need to get/resolve the type etc
 func CreateInvocableFunction(function any) *Invocable {
-	bindingType := reflect.TypeOf(function)
+	bindingType := getType(function)
 
 	isInvoc, invocableType := isInvocable(bindingType)
 	if !isInvoc {
@@ -30,7 +30,7 @@ func CreateInvocableFunction(function any) *Invocable {
 	}
 
 	return &Invocable{
-		instance:       reflect.ValueOf(function),
+		instance:       getVal(function),
 		bindingType:    bindingType,
 		typeOfBinding:  invocableType,
 		isInstantiated: true,

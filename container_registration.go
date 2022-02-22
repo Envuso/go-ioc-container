@@ -45,7 +45,7 @@ import (
 //
 func (container *ContainerInstance) Bind(bindingDef ...any) bool {
 
-	definition := reflect.TypeOf(bindingDef[0])
+	definition := getType(bindingDef[0])
 
 	// Handle Function/Concrete binding
 	if len(bindingDef) == 1 {
@@ -66,7 +66,7 @@ func (container *ContainerInstance) Bind(bindingDef ...any) bool {
 		return false
 	}
 
-	concreteBindingType := reflect.TypeOf(bindingDef[1])
+	concreteBindingType := getType(bindingDef[1])
 	concreteType := getConcreteReturnType(concreteBindingType)
 	if concreteType == nil {
 		log.Printf("Failed to get type of concrete: %s", concreteBindingType.String())
@@ -87,7 +87,7 @@ func (container *ContainerInstance) Bind(bindingDef ...any) bool {
 // Singleton - Bind a "class" that should only be instantiated once when resolved
 // in the future, the initial instantiation of this type will be returned
 func (container *ContainerInstance) Singleton(singleton any, concreteResolverFunc ...any) bool {
-	singletonType := reflect.TypeOf(singleton)
+	singletonType := getType(singleton)
 
 	// We can provide a function to singleton
 	if singletonType.Kind() == reflect.Func && concreteResolverFunc == nil {
@@ -139,7 +139,7 @@ func (container *ContainerInstance) Singleton(singleton any, concreteResolverFun
 	// concreteResolverFunc to resolve the initial singleton instance
 
 	resolverFunc := concreteResolverFunc[0]
-	resolverFuncType := reflect.TypeOf(resolverFunc)
+	resolverFuncType := getType(resolverFunc)
 
 	if resolverFuncType.Kind() != reflect.Func {
 		log.Printf("Trying to register singleton(%s) -> resolver binding but resolver is not a function", singletonType.String())
@@ -164,7 +164,7 @@ func (container *ContainerInstance) Singleton(singleton any, concreteResolverFun
 // Instance - This is similar to Singleton, except with Singleton we provide a type to instantiate
 // With instance, we provide an already instantiated value to the container
 func (container *ContainerInstance) Instance(instance any) bool {
-	instanceType := reflect.TypeOf(instance)
+	instanceType := getType(instance)
 
 	singletonConcrete := getConcreteReturnType(instanceType)
 
@@ -195,6 +195,10 @@ func (container *ContainerInstance) IsBound(binding any) bool {
 	return container.getBindingType(binding) != nil
 }
 
+// func (container *ContainerInstance) MakeFromType(reflect.Type, parameters ...any) any {
+//
+// }
+
 // Make - Try to make a new instance of the provided value and return it
 // This requires a type cast to work nicely...
 // For example:
@@ -215,7 +219,7 @@ func (container *ContainerInstance) Make(abstract any, parameters ...any) any {
 //  var service ServiceAbstract
 //  ContainerInstance.MakeTo(&service)
 func (container *ContainerInstance) MakeTo(makeTo any, parameters ...any) {
-	makeToVal := reflect.ValueOf(makeTo)
+	makeToVal := getVal(makeTo)
 
 	if makeToVal.Kind() != reflect.Pointer {
 		log.Printf("Call to ContainerInstance.MakeTo(), the makeTo arg must be a pointer to your receiving var. Ex; var service ServiceAbstract; ContainerInstance.MakeTo(&service)...")

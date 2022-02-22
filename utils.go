@@ -40,6 +40,15 @@ func getType(t any) reflect.Type {
 	return reflect.TypeOf(t)
 }
 
+// getVal - Allows us to get the val if it's not already a value. If it is a value...
+// return it, just prevents us constantly doing .ValueOf() or this everywhere
+func getVal(t any) reflect.Value {
+	if _, ok := t.(reflect.Value); ok {
+		return t.(reflect.Value)
+	}
+	return reflect.ValueOf(t)
+}
+
 // getAbstractReturnType - Convenience function, if our type is a pointer, we'll get the underlying type
 // If it's also not an interface, nil will be returned
 func getAbstractReturnType(abstractType reflect.Type) reflect.Type {
