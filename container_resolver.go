@@ -61,10 +61,13 @@ func (container *ContainerInstance) resolveStructFields(instanceType reflect.Typ
 			continue
 		}
 
-		resolved := container.makeFromBinding(field.Type())
-		if resolved != nil {
-			ptr := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem()
-			ptr.Set(reflect.ValueOf(resolved))
+		fieldBinding := container.getBindingType(field.Type())
+		if fieldBinding != nil {
+			resolved := container.makeFromBinding(fieldBinding)
+			if resolved != nil {
+				ptr := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem()
+				ptr.Set(reflect.ValueOf(resolved))
+			}
 		}
 	}
 
