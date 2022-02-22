@@ -46,6 +46,13 @@ func (container *ContainerInstance) getBindingType(binding any) reflect.Type {
 		}
 	}
 
+	// ... and one more final last ditch effort... check call this method on the parent container
+	if container.parent != nil {
+		if t := container.parent.getBindingType(bindingType); t != nil {
+			return t
+		}
+	}
+
 	return nil
 }
 

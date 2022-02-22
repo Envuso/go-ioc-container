@@ -1,9 +1,11 @@
 package tests
 
 import (
+	"reflect"
 	"testing"
 
 	Container "github.com/Envuso/go-ioc-container"
+	"github.com/stretchr/testify/assert"
 )
 
 //
@@ -109,4 +111,45 @@ func TestResolvingWithSingleProvidedArgAndRestFromContainer(t *testing.T) {
 	if received != expectedMessage {
 		t.Fatalf("Return of Message() on service is invalid.\nGot: '%s'.\nExpected: '%s'", received, expectedMessage)
 	}
+}
+
+type SomeBullShitServiceContract interface {
+}
+
+type SomeBullShitService struct {
+	Name string
+}
+
+func NewSomeBullShitService(name string) *SomeBullShitService {
+	return &SomeBullShitService{Name: name}
+}
+
+type SomeOtherStructToResolve struct {
+	SomeBsService SomeBullShitServiceContract
+}
+
+func (s *SomeOtherStructToResolve) DoThing() {
+	print("")
+}
+func Test_Failed_Resolution(t *testing.T) {
+	container := Container.CreateContainer()
+	container.Bind(func() SomeBullShitServiceContract {
+		return NewSomeBullShitService("big yeet")
+	})
+
+	resType := reflect.TypeOf(new(SomeOtherStructToResolve))
+
+	didBind := container.Bind(resType)
+	assert.True(t, didBind)
+
+	child := container.CreateChildContainer()
+
+	invocable := Container.CreateInvocable(resType.Elem())
+	inst := invocable.InstantiateWith(child)
+	instVal := reflect.ValueOf(inst)
+
+	method := instVal.MethodByName("DoThing")
+
+	methodRes := method.Call([]reflect.Value{})
+	assert.Empty(t, methodRes)
 }
