@@ -1,15 +1,13 @@
 package tests
 
 import (
-	"errors"
 	"testing"
 
 	container "github.com/Envuso/go-ioc-container"
-	"github.com/modern-go/reflect2"
 	"github.com/stretchr/testify/assert"
 )
 
-var pkgPath = "github.com/Envuso/go-ioc-container"
+var pkgPath = "github.com/Envuso/go-ioc-container/tests"
 
 type TestingStr struct {
 	Name string
@@ -31,17 +29,17 @@ func TestTypes_Of(t *testing.T) {
 	assert.Equal(t, pkgPath, testingInter.Path)
 	assert.Equal(t, "TestingInter", testingInter.Name)
 
-	testingErr := container.ContainerTypes.Of(errors.New("yeet"))
-	assert.Equal(t, pkgPath+"/TestingInter", testingErr.FullName)
-	assert.Equal(t, pkgPath, testingErr.Path)
-	assert.Equal(t, "TestingInter", testingErr.Name)
+	// testingErr := container.ContainerTypes.Of(errors.New("yeet"))
+	// assert.Equal(t, pkgPath+"/TestingInter", testingErr.FullName)
+	// assert.Equal(t, pkgPath, testingErr.Path)
+	// assert.Equal(t, "TestingInter", testingErr.Name)
 
-	test := reflect2.TypeByName("container.TestingStr")
-	test.String()
-
-	test2 := reflect2.TypeByPackageName("github.com/Envuso/go-ioc-container", "TestingStr")
-	test2.String()
-	print("")
+	// test := reflect2.TypeByName("container.TestingStr")
+	// test.String()
+	//
+	// test2 := reflect2.TypeByPackageName("github.com/Envuso/go-ioc-container", "TestingStr")
+	// test2.String()
+	// print("")
 }
 
 func TestPkgType_Save(t *testing.T) {

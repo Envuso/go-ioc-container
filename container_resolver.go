@@ -74,24 +74,17 @@ func (container *ContainerInstance) resolveStructFields(instanceType reflect.Typ
 	return instance
 }
 
-// resolveFunctionArgs - Resolves the args of our function we bound to the container
-// parameters is an array of values that we wish to provide which is optional
-// parameters will first be assigned starting at index 0 of the functions args
-// Then we'll look at the function args, and if we assigned a value from the parameters already
-// it will use that, otherwise we'll look the type up in the container and resolve it
-func (container *ContainerInstance) resolveFunctionArgs(function reflect.Value, parameters ...any) []reflect.Value {
+type FuncArgResolverInterceptor = func(index int, argType reflect.Type, typeZeroVal reflect.Value) (reflect.Value, bool)
+
+func (container *ContainerInstance) ResolveFunctionArgsWithInterceptor(function reflect.Value, interceptor FuncArgResolverInterceptor, parameters ...any) []reflect.Value {
 	inArgCount := 0
 
 	if !function.IsValid() || function.IsZero() {
 		return []reflect.Value{}
 	}
 
-	functionType := function.Type()
-	if functionType.Kind() == reflect.Ptr {
-		inArgCount = functionType.Elem().NumIn()
-	} else {
-		inArgCount = functionType.NumIn()
-	}
+	functionType := getType(function)
+	inArgCount = functionType.NumIn()
 
 	// We'll put the types of all in args into this array,
 	// so we don't have to keep running .In()
@@ -118,24 +111,36 @@ func (container *ContainerInstance) resolveFunctionArgs(function reflect.Value, 
 
 	// Assign parameter values from the provided parameters list first
 	if len(parameters) > 0 {
-		for i := 0; i < len(parameters); i++ {
-			paramVal := reflect.ValueOf(parameters[i])
+		parametersType := reflect.TypeOf(parameters)
 
-			// We'll only assign the param from the provided list, if the type matches?
-			inArg := inArgTypes[i]
-			if inArg == paramVal.Type() {
-				assignArg(i, paramVal)
+		// We can provide a function as an "interceptor" instead...
+		if parametersType.Kind() == reflect.Array || parametersType.Kind() == reflect.Slice {
+			for i := 0; i < len(parameters); i++ {
+				paramVal := reflect.ValueOf(parameters[i])
+
+				// We'll only assign the param from the provided list, if the type matches?
+				inArg := inArgTypes[i]
+				if inArg == paramVal.Type() {
+					assignArg(i, paramVal)
+				}
+			}
+
+			// If our provided parameters fulfils all the function args, let's just early return
+			if assignedCount >= inArgCount {
+				return args
 			}
 		}
 
-		// If our provided parameters fulfils all the function args, let's just early return
-		if assignedCount >= inArgCount {
-			return args
-		}
 	}
 
 	// Now we'll try to resolve any other types from the container
 	for i := 0; i < inArgCount; i++ {
+		interceptedVal, didIntercept := interceptor(i, inArgTypes[i], args[i])
+		if didIntercept {
+			assignArg(i, interceptedVal)
+			continue
+		}
+
 		// We already assigned it, let's skip...
 		if assignedArgs[i] {
 			continue
@@ -153,9 +158,22 @@ func (container *ContainerInstance) resolveFunctionArgs(function reflect.Value, 
 	}
 
 	return args
+
 }
 
-// resolveFunctionArg - Used in resolveFunctionArgs, we pass an arg type and attempt to
+// ResolveFunctionArgs - Resolves the args of our function we bound to the container
+// parameters is an array of values that we wish to provide which is optional
+// parameters will first be assigned starting at index 0 of the functions args
+// Then we'll look at the function args, and if we assigned a value from the parameters already
+// it will use that, otherwise we'll look the type up in the container and resolve it
+func (container *ContainerInstance) ResolveFunctionArgs(function reflect.Value, parameters ...any) []reflect.Value {
+	interceptor := func(index int, argType reflect.Type, typeZeroVal reflect.Value) (reflect.Value, bool) {
+		return typeZeroVal, false
+	}
+	return container.ResolveFunctionArgsWithInterceptor(function, interceptor, parameters...)
+}
+
+// resolveFunctionArg - Used in ResolveFunctionArgs, we pass an arg type and attempt to
 // resolve it from the container, if the type doesn't exist in the container
 // we'll return a zero value version of the type
 func (container *ContainerInstance) resolveFunctionArg(arg reflect.Type) (reflect.Value, bool) {

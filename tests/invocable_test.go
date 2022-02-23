@@ -62,3 +62,26 @@ func TestCreatingStructUsingDI(t *testing.T) {
 	}
 
 }
+
+func TestCallingFunctionOnStructUsingArgInterceptor(t *testing.T) {
+	container := Container.CreateContainer()
+	container.Bind(createSingletonServiceOne)
+
+	invocable := Container.CreateInvocableStruct(reflect.ValueOf(&serviceConcrete{}))
+	results := invocable.CallMethodByNameWithArgInterceptor(
+		"InterceptFunc",
+		container,
+		func(index int, argType reflect.Type, typeZeroVal reflect.Value) (reflect.Value, bool) {
+			if argType.Name() == "anotherServiceAbstract" {
+				return reflect.ValueOf(&serviceConcreteTwo{
+					message: "Hi, from interceptor",
+				}), true
+			}
+
+			return typeZeroVal, false
+		},
+	)
+
+	assert.Equal(t, results[0].Interface(), "Hi, from interceptor")
+
+}

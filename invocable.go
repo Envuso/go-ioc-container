@@ -123,7 +123,21 @@ func (invocable *Invocable) CallMethodByNameWith(methodName string, container *C
 	structInstance := invocable.InstantiateStructAndFill(container)
 	method := structInstance.MethodByName(methodName)
 
-	return method.Call(container.resolveFunctionArgs(method, parameters...))
+	return method.Call(container.ResolveFunctionArgs(method, parameters...))
+}
+
+func (invocable *Invocable) CallMethodByNameWithArgInterceptor(methodName string, container *ContainerInstance, interceptor FuncArgResolverInterceptor, parameters ...any) []reflect.Value {
+	if invocable.typeOfBinding != "struct" {
+		panic("CallMethodByNameWith is only usable when the Invocable instance is created with a struct.")
+	}
+	if !invocable.isInstantiated {
+		invocable.instantiate()
+	}
+
+	structInstance := invocable.InstantiateStructAndFill(container)
+	method := structInstance.MethodByName(methodName)
+
+	return method.Call(container.ResolveFunctionArgsWithInterceptor(method, interceptor, parameters...))
 }
 
 // CallMethodWith - Call the method and assign its parameters from the passed parameters & container
@@ -133,6 +147,6 @@ func (invocable *Invocable) CallMethodWith(container *ContainerInstance, paramet
 	}
 
 	return invocable.instance.Call(
-		container.resolveFunctionArgs(invocable.instance, parameters...),
+		container.ResolveFunctionArgs(invocable.instance, parameters...),
 	)
 }

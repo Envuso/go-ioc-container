@@ -30,6 +30,10 @@ func (service *serviceConcrete) Message() string {
 	return "Hello World!"
 }
 
+func (service *serviceConcrete) InterceptFunc(anotherService anotherServiceAbstract) string {
+	return anotherService.Message()
+}
+
 func createSingletonServiceOne() *serviceConcrete {
 	service := new(serviceConcrete)
 	service.message = "TestBindingSingletonValueToContainer"
