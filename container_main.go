@@ -3,8 +3,6 @@ package container
 import (
 	"reflect"
 	"unsafe"
-
-	"golang.org/x/exp/maps"
 )
 
 // ContainerConfig - Holds configuration values... soon I will add some more, make them work fully
@@ -80,16 +78,26 @@ func (container *ContainerInstance) CreateChildContainer() *ContainerInstance {
 // ClearInstances - This will just remove any singleton instances from the container
 // When they are next resolved via Make/MakeTo, they will be instantiated again
 func (container *ContainerInstance) ClearInstances() {
-	maps.Clear(container.resolved)
+	for k := range container.resolved {
+		delete(container.resolved, k)
+	}
 }
 
 // Reset - Reset will empty all bindings in this container, you will have to register
 // any bindings again before you can resolve them.
 func (container *ContainerInstance) Reset() {
-	maps.Clear(container.resolved)
-	maps.Clear(container.bindings)
-	maps.Clear(container.concretes)
-	maps.Clear(container.tagged)
+	for k := range container.resolved {
+		delete(container.resolved, k)
+	}
+	for k := range container.bindings {
+		delete(container.bindings, k)
+	}
+	for k := range container.concretes {
+		delete(container.concretes, k)
+	}
+	for k := range container.tagged {
+		delete(container.tagged, k)
+	}
 	container.parent = nil
 }
 

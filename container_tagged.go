@@ -2,8 +2,6 @@ package container
 
 import (
 	"reflect"
-
-	"golang.org/x/exp/slices"
 )
 
 // Tag - When we've bound to the container, we can then tag the abstracts with a string
@@ -11,16 +9,15 @@ import (
 //
 // For example; Imagine we have a few different "statistic gathering" services
 //
-//  // Bind our individual services
-//  Container.Bind(new(NewUserPostViewsStatService), func () {})
-//  Container.Bind(new(NewPageViewsStatService), func () {})
+//	// Bind our individual services
+//	Container.Bind(new(NewUserPostViewsStatService), func () {})
+//	Container.Bind(new(NewPageViewsStatService), func () {})
 //
-//  // Add the services to the "StatServices" "Category"
-//  Container.Tag("StatServices", new(NewUserPostViewsStatService), new(NewPageViewsStatService))
+//	// Add the services to the "StatServices" "Category"
+//	Container.Tag("StatServices", new(NewUserPostViewsStatService), new(NewPageViewsStatService))
 //
-//  // Now we can obtain them all
-//  Container.Tagged("StatServices")
-//
+//	// Now we can obtain them all
+//	Container.Tagged("StatServices")
 func (container *ContainerInstance) Tag(tag string, bindings ...any) bool {
 	if len(bindings) == 0 {
 		return false
@@ -50,9 +47,20 @@ func (container *ContainerInstance) Tag(tag string, bindings ...any) bool {
 
 	// We have types tagged with this tag already, so we need to merge, but make sure they're unique
 	for _, taggedType := range taggedTypes {
-		if !slices.Contains(container.tagged[tag], taggedType) {
+		// check if container.tagged[tag] contains taggedType in the slice
+		var found bool = false
+		for _, r := range container.tagged[tag] {
+			if r == taggedType {
+				found = true
+				break
+			}
+		}
+		if !found {
 			container.tagged[tag] = append(container.tagged[tag], taggedType)
 		}
+		// if !slices.Contains(container.tagged[tag], taggedType) {
+		// 	container.tagged[tag] = append(container.tagged[tag], taggedType)
+		// }
 	}
 
 	return len(container.tagged[tag]) > 0
